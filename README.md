@@ -71,12 +71,49 @@ In VS Code / Cursor you can use the PlatformIO sidebar: **Upload** and **Monitor
 
 If upload fails with “port busy”, another program (or a stuck monitor) is holding the COM port. Close other serial terminals and try again.
 
+## uŠup I2C sensors
+
+Sensors on the **uŠup I2C** connector (shared bus):
+
+| Module | Sensor | I2C address | Datasheet |
+|--------|--------|-------------|-----------|
+| `ushupBus` | Bus power + I2C (GPIO 47, SDA 42, SCL 2) | — | [LaskaKit DEVKit](https://github.com/LaskaKit/ESP32-S3-DEVKit) |
+| `sht4xSensor` | Sensirion SHT4x (temp / humidity) | 0x44 (0x45 alt.) | `datasheeds/sht4x.pdf` |
+| `bmi270Sensor` | Bosch BMI270 (accel / gyro) | 0x68 (0x69 alt.) | `datasheeds/bst-bmi270-ds000.pdf` |
+
+Usage:
+
+```cpp
+#include "modules/sensors/ushupBus.h"
+#include "modules/sensors/sht4xSensor.h"
+#include "modules/sensors/bmi270Sensor.h"
+
+UshupBus::begin();
+
+Sht4xSensor sht4;
+Sht4xSensor::Reading climate;
+if (sht4.begin() && sht4.read(climate)) {
+    float t = climate.temperatureC;
+    float rh = climate.humidityPercent;
+}
+
+Bmi270Sensor imu;
+Bmi270Sensor::Reading motion;
+if (imu.begin()) {           // or imu.begin(0x69)
+    imu.read(motion);
+}
+```
+
 ## Project layout
 
 ```
 src/
   main.cpp                 # Application entry
   modules/
+    sensors/
+      ushupBus.*           # uŠup I2C bus (power + Wire)
+      sht4xSensor.*        # SHT4x temperature / humidity
+      bmi270Sensor.*       # BMI270 accelerometer / gyroscope
     motorController.*      # Motor driver
     wifiConnect.*          # Wi-Fi setup
 boards/

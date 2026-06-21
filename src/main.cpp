@@ -1,60 +1,86 @@
 #include <Arduino.h>
-#include "modules/wifiConnect.h"
 #include "modules/motorController.h"
+#include "modules/sensors/bmi270Sensor.h"
+#include "modules/sensors/sht4xSensor.h"
+#include "modules/sensors/ushupBus.h"
+#include "modules/wifiConnect.h"
 
 const char *ssid = "JMHome";
 const char *password = "84d1f54K95x";
 
 MotorController motors(Serial2);
+Sht4xSensor sht4;
+Bmi270Sensor imu;
 
 void setup()
 {
-    // Serial přes UART port (CH9102 na konektoru UART)
     Serial.begin(115200);
 
-    // Počkej max. 3 s na serial monitor, pak pokračuj i bez něj
     unsigned long serialWaitStart = millis();
     while (!Serial && millis() - serialWaitStart < 3000)
     {
         delay(10);
     }
 
-    // Připoj se k Wi-Fi
-    connectWiFi(ssid, password);
+    if (!UshupBus::begin())
+    {
+        Serial.println("uŠup I2C init failed");
+    }
 
-    // Inicializace motor controlleru
+    if (!sht4.begin())
+    {
+        Serial.println("SHT4x not found on uŠup I2C");
+    }
+    else
+    {
+        Serial.println("SHT4x ready");
+    }
+
+    if (!imu.begin())
+    {
+        Serial.println("BMI270 not found on uŠup I2C (try address 0x69 if wired)");
+    }
+    else
+    {
+        Serial.println("BMI270 ready");
+    }
+
+    connectWiFi(ssid, password);
     motors.begin(9600);
 
-    // Úvodní zpráva
-    Serial.println("ESP32-S3 Demo Program");
-    Serial.println("=====================");
+    Serial.println("ESP32-S3 LawnMower");
+    Serial.println("====================");
 }
 
 void loop()
 {
-    // Výpis aktuálního času od startu desky (v ms)
-    unsigned long currentMillis = millis();
-    Serial.print("Čas od startu (ms): ");
-    Serial.println(currentMillis);
+    Sht4xSensor::Reading climate;
+    if (sht4.read(climate) && climate.valid)
+    {
+        Serial.print("Temp: ");
+        Serial.print(climate.temperatureC, 2);
+        Serial.print(" C, Humidity: ");
+        Serial.print(climate.humidityPercent, 2);
+        Serial.println(" %");
+    }
 
-    // Informace o desce
-    Serial.print("Free Heap: ");
-    Serial.println(esp_get_free_heap_size());
-
-    Serial.print("Free Flash (ROM) bytes: ");
-    Serial.println(ESP.getFreeSketchSpace());
-
-    Serial.print("CPU Frequency: ");
-    Serial.print(getCpuFrequencyMhz());
-    Serial.println(" MHz");
+    Bmi270Sensor::Reading motion;
+    if (imu.read(motion) && motion.valid)
+    {
+        Serial.print("Accel g  X:");
+        Serial.print(motion.accelX, 3);
+        Serial.print(" Y:");
+        Serial.print(motion.accelY, 3);
+        Serial.print(" Z:");
+        Serial.print(motion.accelZ, 3);
+        Serial.print("  Gyro dps X:");
+        Serial.print(motion.gyroX, 2);
+        Serial.print(" Y:");
+        Serial.print(motion.gyroY, 2);
+        Serial.print(" Z:");
+        Serial.println(motion.gyroZ, 2);
+    }
 
     Serial.println("---------------------");
-
-    //motors.setSpeed(1, 50);  // Motor 1 na 50% vpřed
-    //motors.setSpeed(2, -30); // Motor 2 na 30% vzad
-    //delay(2000);
-    //motors.stop(0);
-
-    // Pauza 1 sekunda
     delay(1000);
 }

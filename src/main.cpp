@@ -1,9 +1,10 @@
 #include <Arduino.h>
-#include "modules/motorController.h"
+#include "modules/motors/motorController.h"
 #include "modules/sensors/bmi270Sensor.h"
 #include "modules/sensors/sht4xSensor.h"
 #include "modules/sensors/ushupBus.h"
-#include "modules/wifiConnect.h"
+#include "modules/network/sensorApi.h"
+#include "modules/network/wifiConnect.h"
 
 const char *ssid = "JMHome";
 const char *password = "84d1f54K95x";
@@ -15,12 +16,11 @@ Bmi270Sensor imu;
 void setup()
 {
     Serial.begin(115200);
+    delay(3000); // UART: čas na otevření Serial monitoru po resetu / uploadu
 
-    unsigned long serialWaitStart = millis();
-    while (!Serial && millis() - serialWaitStart < 3000)
-    {
-        delay(10);
-    }
+    Serial.println();
+    Serial.println("ESP32-S3 LawnMower");
+    Serial.println("====================");
 
     if (!UshupBus::begin())
     {
@@ -45,42 +45,21 @@ void setup()
         Serial.println("BMI270 ready");
     }
 
-    connectWiFi(ssid, password);
+    if (connectWiFi(ssid, password))
+    {
+        beginSensorApi(sht4, imu);
+    }
+    else
+    {
+        Serial.println("Sensor API not started (Wi-Fi unavailable).");
+    }
     motors.begin(9600);
 
-    Serial.println("ESP32-S3 LawnMower");
+    Serial.println("Setup complete.");
     Serial.println("====================");
 }
 
 void loop()
 {
-    Sht4xSensor::Reading climate;
-    if (sht4.read(climate) && climate.valid)
-    {
-        Serial.print("Temp: ");
-        Serial.print(climate.temperatureC, 2);
-        Serial.print(" C, Humidity: ");
-        Serial.print(climate.humidityPercent, 2);
-        Serial.println(" %");
-    }
-
-    Bmi270Sensor::Reading motion;
-    if (imu.read(motion) && motion.valid)
-    {
-        Serial.print("Accel g  X:");
-        Serial.print(motion.accelX, 3);
-        Serial.print(" Y:");
-        Serial.print(motion.accelY, 3);
-        Serial.print(" Z:");
-        Serial.print(motion.accelZ, 3);
-        Serial.print("  Gyro dps X:");
-        Serial.print(motion.gyroX, 2);
-        Serial.print(" Y:");
-        Serial.print(motion.gyroY, 2);
-        Serial.print(" Z:");
-        Serial.println(motion.gyroZ, 2);
-    }
-
-    Serial.println("---------------------");
-    delay(1000);
+    handleSensorApi();
 }

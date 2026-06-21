@@ -104,6 +104,58 @@ if (imu.begin()) {           // or imu.begin(0x69)
 }
 ```
 
+## HTTP API
+
+After Wi-Fi connects, the board exposes a JSON HTTP API on **port 80**. The IP address is printed in the Serial monitor during startup (`IP address: …`).
+
+Base URL: `http://<board-ip>/`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | API index — lists available routes |
+| `GET` | `/api/climate` | SHT4x temperature and humidity |
+| `GET` | `/api/motion` | BMI270 accelerometer and gyroscope |
+
+### Examples
+
+```bash
+curl http://192.168.x.x/
+curl http://192.168.x.x/api/climate
+curl http://192.168.x.x/api/motion
+```
+
+**`GET /`** — route index:
+
+```json
+{
+  "name": "LawnMower Sensor API",
+  "routes": [
+    {"method": "GET", "path": "/api/climate", "description": "SHT4x temperature and humidity"},
+    {"method": "GET", "path": "/api/motion", "description": "BMI270 accelerometer and gyroscope"}
+  ]
+}
+```
+
+**`GET /api/climate`** — success:
+
+```json
+{"valid": true, "temperature_c": 23.45, "humidity_percent": 55.12}
+```
+
+**`GET /api/motion`** — success:
+
+```json
+{
+  "valid": true,
+  "accel": {"x": 0.012, "y": -0.003, "z": 1.001},
+  "gyro": {"x": 0.50, "y": -0.20, "z": 0.10}
+}
+```
+
+On sensor or read errors the API returns HTTP **503** with `"valid": false` and an `"error"` field.
+
+The API starts only when Wi-Fi connection succeeds. If Wi-Fi fails, Serial monitor shows `Sensor API not started (Wi-Fi unavailable).`
+
 ## Project layout
 
 ```
@@ -114,8 +166,11 @@ src/
       ushupBus.*           # uŠup I2C bus (power + Wire)
       sht4xSensor.*        # SHT4x temperature / humidity
       bmi270Sensor.*       # BMI270 accelerometer / gyroscope
-    motorController.*      # Motor driver
-    wifiConnect.*          # Wi-Fi setup
+    network/
+      wifiConnect.*      # Wi-Fi setup
+      sensorApi.*        # HTTP API (sensor endpoints)
+    motors/
+      motorController.*  # JYQD V7.3E2 BLDC motor driver
 boards/
   laskakit-esp32-s3-devkit.json   # Board definition (flash, PSRAM, upload port)
 platformio.ini           # PlatformIO config

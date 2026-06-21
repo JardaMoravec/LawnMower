@@ -1,4 +1,4 @@
-#include "modules/motorController.h"
+#include "modules/motors/motorController.h"
 
 // Definice příkazů pro JYQD V7.3E2
 #define CMD_HEADER 0xAA

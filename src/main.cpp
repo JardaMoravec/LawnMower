@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include "wifiConnect.h"
-#include "motorController.h"
+#include "modules/wifiConnect.h"
+#include "modules/motorController.h"
 
 const char *ssid = "JMHome";
 const char *password = "84d1f54K95x";
@@ -9,10 +9,10 @@ MotorController motors(Serial2);
 
 void setup()
 {
-    // Spuštění sériové komunikace na 115200 baud
+    // Serial přes UART port (CH9102 na konektoru UART)
     Serial.begin(115200);
 
-    // Počkej max. 3 s na USB CDC (ESP32-S3), pak pokračuj i bez monitoru
+    // Počkej max. 3 s na serial monitor, pak pokračuj i bez něj
     unsigned long serialWaitStart = millis();
     while (!Serial && millis() - serialWaitStart < 3000)
     {

@@ -1,0 +1,40 @@
+CompileFlags:
+  Remove:
+    - -m*
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -freorder-blocks
+    - -Wwrite-strings
+    - -fstack-protector
+    - -ggdb
+    - -ggdb*
+    - -MMD
+    - -MP
+    - -MT*
+    - -MF*
+    - -fno-jump-tables
+  Add:
+    - -D__GNUC__=12
+    - -D__GNUC_MINOR__=0
+    - -D__GNUC_PATCHLEVEL__=0
+    - -Wno-unknown-warning-option
+    - -Wno-narrowing
+    - -Wno-missing-field-initializers
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/sys-include
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/lib/gcc/xtensa-esp32s3-elf/8.4.0/include
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/lib/gcc/xtensa-esp32s3-elf/8.4.0/include-fixed
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include/c++/8.4.0
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include/c++/8.4.0/xtensa-esp32s3-elf/no-rtti
+    - -isystem
+    - C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/xtensa-esp32s3-elf/include/c++/8.4.0/backward
+
+Diagnostics:
+  Suppress:
+    - expected_fn_body

@@ -1,0 +1,10 @@
+{
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.codeAnalysis.clangTidy.enabled": false,
+    "C_Cpp.errorSquiggles": "disabled",
+    "clangd.enableConfig": true,
+    "clangd.arguments": [
+        "--query-driver=C:/Users/jara/.platformio/packages/toolchain-xtensa-esp32s3/bin/*",
+        "--query-driver=C:\\Users\\jara\\.platformio\\packages\\toolchain-xtensa-esp32s3\\bin\\*"
+    ]
+}

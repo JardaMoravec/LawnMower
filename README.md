@@ -9,8 +9,9 @@ Firmware for the lawn mower project, built with **PlatformIO** and **Arduino** o
 | Board | [LaskaKit ESP32-S3-DEVKit](https://github.com/LaskaKit/ESP32-S3-DEVKit) |
 | Module | ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB OPI PSRAM) |
 | Official board docs | [README (CZ)](https://github.com/LaskaKit/ESP32-S3-DEVKit/blob/main/README_CZ.md) · [Pinout](https://github.com/LaskaKit/ESP32-S3-DEVKit/blob/main/img/ESP32-S3-DEVKIT_pinout.png) |
+| Motor driver | JYQD-V7.3E2 — wiring: [`docs/motor-driver-wiring.md`](docs/motor-driver-wiring.md) |
 
-The module datasheet in `datasheeds/` describes the **WROOM module**, not the dev board pinout or USB wiring. Use the LaskaKit repo for board-specific details.
+The module datasheet in `datasheeds/` describes the **WROOM module**, not the dev board pinout or USB wiring. Use the LaskaKit repo for board-specific details. Motor driver wiring (3.3 V ↔ 5 V level shifter) is documented separately in [`docs/motor-driver-wiring.md`](docs/motor-driver-wiring.md).
 
 ## USB connection (important)
 
@@ -171,6 +172,9 @@ src/
       sensorApi.*        # HTTP API (sensor endpoints)
     motors/
       motorController.*  # JYQD V7.3E2 BLDC motor driver
+docs/
+  motor-driver-wiring.md # ESP32 ↔ JYQD wiring (level shifter BSS138)
+datasheeds/              # Datasheets (JYQD, BSS138, sensors, …)
 boards/
   laskakit-esp32-s3-devkit.json   # Board definition (flash, PSRAM, upload port)
 platformio.ini           # PlatformIO config

@@ -1,56 +1,113 @@
 #include "modules/motors/motorController.h"
 
-// Definice příkazů pro JYQD V7.3E2
-#define CMD_HEADER 0xAA
-#define CMD_SPEED 0x01
-#define CMD_STOP 0x02
-#define CMD_STATUS 0x03
+namespace {
+MotorController* g_activeController = nullptr;
+} // namespace
 
-MotorController::MotorController(HardwareSerial& serial) 
-    : _serial(serial), _motor1Speed(0), _motor2Speed(0), _initialized(false) {
+void IRAM_ATTR MotorController::onSignal1Pulse() {
+    if (g_activeController != nullptr) {
+        g_activeController->_signal1Pulses++;
+    }
 }
 
-bool MotorController::begin(uint32_t baudRate) {
-    _serial.begin(baudRate);
-    delay(100); // Počkejme na inicializaci sériového portu
-    
-    // Reset motorů při startu
-    stop(0);
-    
+void IRAM_ATTR MotorController::onSignal2Pulse() {
+    if (g_activeController != nullptr) {
+        g_activeController->_signal2Pulses++;
+    }
+}
+
+void MotorController::holdMotorsOff() {
+    const uint8_t pwms[] = {4, 7};
+    const uint8_t directions[] = {5, 15};
+    const uint8_t enables[] = {6, 16};
+
+    for (uint8_t i = 0; i < 2; ++i) {
+        pinMode(enables[i], OUTPUT);
+        digitalWrite(enables[i], LOW);
+        pinMode(directions[i], INPUT);
+        pinMode(pwms[i], OUTPUT);
+        digitalWrite(pwms[i], LOW);
+    }
+}
+
+MotorController::MotorController()
+    : _motor1{0, true},
+      _motor2{0, true},
+      _initialized(false),
+      _signal1Pulses(0),
+      _signal2Pulses(0),
+      _signal1LastSnapshot(0),
+      _signal2LastSnapshot(0),
+      _signal1Pps(0),
+      _signal2Pps(0),
+      _signalSampleMs(0) {
+    holdMotorsOff();
+}
+
+MotorController::MotorPins MotorController::pinsForId(uint8_t motorId) {
+    if (motorId == 1) {
+        return {4, 5, 6, 18, 0};
+    }
+    return {7, 15, 16, 17, 1};
+}
+
+MotorController::MotorState& MotorController::stateFor(uint8_t motorId) {
+    return motorId == 1 ? _motor1 : _motor2;
+}
+
+const MotorController::MotorState& MotorController::stateFor(uint8_t motorId) const {
+    return motorId == 1 ? _motor1 : _motor2;
+}
+
+uint8_t MotorController::speedToPwmDuty(uint8_t speedPercent) {
+    if (speedPercent == 0) {
+        return 0;
+    }
+
+    const uint8_t minDuty = (255U * MIN_VR_DUTY_PERCENT) / 100U;
+    return minDuty + (speedPercent * (255U - minDuty)) / 100U;
+}
+
+bool MotorController::begin() {
+    holdMotorsOff();
+
+    for (uint8_t motorId = 1; motorId <= 2; ++motorId) {
+        const MotorPins pins = pinsForId(motorId);
+
+        pinMode(pins.signal, INPUT);
+        setDirectionPin(pins, true);
+        setEnablePin(pins, false);
+
+        setupPwm(pins);
+        writePwmDuty(pins, 0);
+
+        attachInterrupt(digitalPinToInterrupt(pins.signal),
+                        motorId == 1 ? onSignal1Pulse : onSignal2Pulse,
+                        RISING);
+    }
+
+    _motor1 = {0, true};
+    _motor2 = {0, true};
+    _signalSampleMs = millis();
+    g_activeController = this;
     _initialized = true;
     return true;
 }
 
-void MotorController::setSpeed(uint8_t motorId, int8_t speed) {
+void MotorController::setMotor(uint8_t motorId, uint8_t speedPercent, bool forward) {
     if (!_initialized || motorId < 1 || motorId > 2) {
         return;
     }
 
-    // Omezení rychlosti na rozsah -100 až 100
-    if (speed > 100) speed = 100;
-    if (speed < -100) speed = -100;
-
-    // Uložení aktuální rychlosti
-    if (motorId == 1) {
-        _motor1Speed = speed;
-    } else {
-        _motor2Speed = speed;
+    if (speedPercent > 100) {
+        speedPercent = 100;
     }
 
-    // Příprava příkazu
-    // Formát: [HEADER, CMD, MOTOR_ID, DIRECTION, SPEED, CHECKSUM]
-    uint8_t direction = (speed >= 0) ? 0x01 : 0x02; // 0x01 = vpřed, 0x02 = vzad
-    uint8_t absSpeed = abs(speed);
-    
-    uint8_t command[6];
-    command[0] = CMD_HEADER;
-    command[1] = CMD_SPEED;
-    command[2] = motorId;
-    command[3] = direction;
-    command[4] = absSpeed;
-    command[5] = calculateChecksum(command, 5);
+    MotorState& state = stateFor(motorId);
+    state.speedPercent = speedPercent;
+    state.forward = forward;
 
-    sendCommand(command, 6);
+    applyMotor(pinsForId(motorId), motorId, speedPercent, forward);
 }
 
 void MotorController::stop(uint8_t motorId) {
@@ -59,31 +116,12 @@ void MotorController::stop(uint8_t motorId) {
     }
 
     if (motorId == 0) {
-        // Zastavení obou motorů
         stop(1);
         stop(2);
         return;
     }
 
-    if (motorId < 1 || motorId > 2) {
-        return;
-    }
-
-    // Vynulování rychlosti
-    if (motorId == 1) {
-        _motor1Speed = 0;
-    } else {
-        _motor2Speed = 0;
-    }
-
-    // Příprava příkazu pro zastavení
-    uint8_t command[4];
-    command[0] = CMD_HEADER;
-    command[1] = CMD_STOP;
-    command[2] = motorId;
-    command[3] = calculateChecksum(command, 3);
-
-    sendCommand(command, 4);
+    setMotor(motorId, 0, stateFor(motorId).forward);
 }
 
 void MotorController::emergencyStop() {
@@ -91,52 +129,116 @@ void MotorController::emergencyStop() {
         return;
     }
 
-    // Okamžité zastavení všech motorů
-    _motor1Speed = 0;
-    _motor2Speed = 0;
-    
-    stop(0);
-    
-    // Odeslání nouzového stop příkazu
-    uint8_t command[3];
-    command[0] = CMD_HEADER;
-    command[1] = CMD_STOP;
-    command[2] = 0x00; // 0x00 = emergency stop pro všechny motory
-    
-    sendCommand(command, 3);
+    _motor1.speedPercent = 0;
+    _motor2.speedPercent = 0;
+
+    for (uint8_t motorId = 1; motorId <= 2; ++motorId) {
+        forceMotorOff(pinsForId(motorId));
+    }
 }
 
-int8_t MotorController::getSpeed(uint8_t motorId) {
-    if (motorId == 1) {
-        return _motor1Speed;
-    } else if (motorId == 2) {
-        return _motor2Speed;
+uint8_t MotorController::getSpeedPercent(uint8_t motorId) const {
+    if (motorId == 1 || motorId == 2) {
+        return stateFor(motorId).speedPercent;
     }
     return 0;
 }
 
-bool MotorController::isRunning(uint8_t motorId) {
+bool MotorController::getForward(uint8_t motorId) const {
+    if (motorId == 1 || motorId == 2) {
+        return stateFor(motorId).forward;
+    }
+    return true;
+}
+
+bool MotorController::isEnabled(uint8_t motorId) const {
+    return getSpeedPercent(motorId) > 0;
+}
+
+void MotorController::tickSignalSampling() {
+    if (!_initialized) {
+        return;
+    }
+
+    const unsigned long now = millis();
+    if (now - _signalSampleMs < 1000) {
+        return;
+    }
+
+    noInterrupts();
+    const uint32_t count1 = _signal1Pulses;
+    const uint32_t count2 = _signal2Pulses;
+    interrupts();
+
+    _signal1Pps = count1 - _signal1LastSnapshot;
+    _signal2Pps = count2 - _signal2LastSnapshot;
+    _signal1LastSnapshot = count1;
+    _signal2LastSnapshot = count2;
+    _signalSampleMs = now;
+}
+
+uint32_t MotorController::getSignalPulsesPerSecond(uint8_t motorId) const {
     if (motorId == 1) {
-        return _motor1Speed != 0;
-    } else if (motorId == 2) {
-        return _motor2Speed != 0;
+        return _signal1Pps;
     }
-    return false;
+    if (motorId == 2) {
+        return _signal2Pps;
+    }
+    return 0;
 }
 
-void MotorController::sendCommand(const uint8_t* command, size_t length) {
-    // Odeslání příkazu přes sériový port
-    _serial.write(command, length);
-    _serial.flush();
-    
-    // Malé zpoždění pro zpracování příkazu
-    delay(10);
+void MotorController::setupPwm(const MotorPins& pins) {
+    ledcSetup(pins.ledcChannel, PWM_FREQUENCY_HZ, PWM_RESOLUTION_BITS);
+    ledcAttachPin(pins.pwm, pins.ledcChannel);
 }
 
-uint8_t MotorController::calculateChecksum(const uint8_t* data, size_t length) {
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < length; i++) {
-        checksum ^= data[i]; // XOR checksum
+void MotorController::setDirectionPin(const MotorPins& pins, bool forward) {
+    if (forward) {
+        pinMode(pins.direction, INPUT);
+        return;
     }
-    return checksum;
+
+    pinMode(pins.direction, OUTPUT);
+    digitalWrite(pins.direction, LOW);
+}
+
+void MotorController::setEnablePin(const MotorPins& pins, bool allowRun) {
+    if (allowRun) {
+        pinMode(pins.enable, INPUT);
+        return;
+    }
+
+    pinMode(pins.enable, OUTPUT);
+    digitalWrite(pins.enable, LOW);
+}
+
+void MotorController::forceMotorOff(const MotorPins& pins) {
+    writePwmDuty(pins, 0);
+    setEnablePin(pins, false);
+}
+
+void MotorController::applyMotor(const MotorPins& pins, uint8_t motorId, uint8_t speedPercent, bool forward) {
+    if (speedPercent == 0) {
+        forceMotorOff(pins);
+        return;
+    }
+
+    const uint8_t duty = speedToPwmDuty(speedPercent);
+
+    setDirectionPin(pins, forward);
+    writePwmDuty(pins, duty);
+    setEnablePin(pins, true);
+
+    Serial.print("Motor ");
+    Serial.print(motorId);
+    Serial.print(" run: duty=");
+    Serial.print(duty);
+    Serial.print(" (");
+    Serial.print(speedPercent);
+    Serial.print("%), dir=");
+    Serial.println(forward ? "fwd" : "rev");
+}
+
+void MotorController::writePwmDuty(const MotorPins& pins, uint8_t duty) {
+    ledcWrite(pins.ledcChannel, duty);
 }

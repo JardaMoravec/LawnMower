@@ -4,78 +4,81 @@
 #include <Arduino.h>
 
 /**
- * @brief Třída pro ovládání JYQD V7.3E2 BLDC motor controller
- * 
- * Shield podporuje sériovou komunikaci pro ovládání bezkartáčových motorů.
- * Typicky se používá UART komunikace s příkazy pro nastavení rychlosti a směru.
+ * @brief Ovládání JYQD V7.3E2 přes PWM (VR), směr (Z/F) a enable (EL).
+ *
+ * JYQD: EL/Z/F = 5V nebo volno (povoleno/vpřed), GND = zakázáno/vzad.
+ * Nepoužívat OUTPUT HIGH — stačí INPUT (float) nebo OUTPUT LOW.
  */
 class MotorController {
 public:
-    /**
-     * @brief Konstruktor
-     * @param serial Reference na sériový port (např. Serial1, Serial2)
-     */
-    MotorController(HardwareSerial& serial);
+    MotorController();
+
+    bool begin();
 
     /**
-     * @brief Inicializace motor controller
-     * @param baudRate Přenosová rychlost (typicky 9600)
-     * @return true pokud inicializace proběhla úspěšně
+     * @param speedPercent 0–100; 0 = motor úplně vypnut (EL → GND, PWM 0)
+     * @param forward true = vpřed, false = vzad
      */
-    bool begin(uint32_t baudRate = 9600);
+    void setMotor(uint8_t motorId, uint8_t speedPercent, bool forward);
 
-    /**
-     * @brief Nastavení rychlosti motoru
-     * @param motorId ID motoru (1 nebo 2 pro dva motory)
-     * @param speed Rychlost -100 až 100 (záporné hodnoty = zpětný chod)
-     */
-    void setSpeed(uint8_t motorId, int8_t speed);
-
-    /**
-     * @brief Zastavení motoru
-     * @param motorId ID motoru (1 nebo 2), 0 = oba motory
-     */
+    /** motorId 0 = oba motory. */
     void stop(uint8_t motorId = 0);
 
-    /**
-     * @brief Nouzové zastavení všech motorů
-     */
     void emergencyStop();
 
-    /**
-     * @brief Získání aktuální rychlosti motoru
-     * @param motorId ID motoru (1 nebo 2)
-     * @return Aktuální rychlost -100 až 100
-     */
-    int8_t getSpeed(uint8_t motorId);
+    uint8_t getSpeedPercent(uint8_t motorId) const;
+    bool getForward(uint8_t motorId) const;
+    bool isEnabled(uint8_t motorId) const;
 
-    /**
-     * @brief Získání informace o stavu motoru
-     * @param motorId ID motoru (1 nebo 2)
-     * @return true pokud motor běží
-     */
-    bool isRunning(uint8_t motorId);
+    void tickSignalSampling();
+    uint32_t getSignalPulsesPerSecond(uint8_t motorId) const;
 
 private:
-    HardwareSerial& _serial;
-    int8_t _motor1Speed;
-    int8_t _motor2Speed;
+    struct MotorPins {
+        uint8_t pwm;
+        uint8_t direction;
+        uint8_t enable;
+        uint8_t signal;
+        uint8_t ledcChannel;
+    };
+
+    struct MotorState {
+        uint8_t speedPercent;
+        bool forward;
+    };
+
+    static constexpr uint32_t PWM_FREQUENCY_HZ = 10000;
+    static constexpr uint8_t PWM_RESOLUTION_BITS = 8;
+    static constexpr uint8_t MIN_VR_DUTY_PERCENT = 50;
+
+    static MotorPins pinsForId(uint8_t motorId);
+    static uint8_t speedToPwmDuty(uint8_t speedPercent);
+    static void holdMotorsOff();
+
+    MotorState& stateFor(uint8_t motorId);
+    const MotorState& stateFor(uint8_t motorId) const;
+
+    MotorState _motor1;
+    MotorState _motor2;
     bool _initialized;
 
-    /**
-     * @brief Odeslání příkazu na controller
-     * @param command Pole bytů s příkazem
-     * @param length Délka příkazu
-     */
-    void sendCommand(const uint8_t* command, size_t length);
+    volatile uint32_t _signal1Pulses;
+    volatile uint32_t _signal2Pulses;
+    uint32_t _signal1LastSnapshot;
+    uint32_t _signal2LastSnapshot;
+    uint32_t _signal1Pps;
+    uint32_t _signal2Pps;
+    unsigned long _signalSampleMs;
 
-    /**
-     * @brief Výpočet kontrolního součtu
-     * @param data Pole bytů
-     * @param length Délka dat
-     * @return Kontrolní součet
-     */
-    uint8_t calculateChecksum(const uint8_t* data, size_t length);
+    static void IRAM_ATTR onSignal1Pulse();
+    static void IRAM_ATTR onSignal2Pulse();
+
+    void setupPwm(const MotorPins& pins);
+    void setDirectionPin(const MotorPins& pins, bool forward);
+    void setEnablePin(const MotorPins& pins, bool allowRun);
+    void forceMotorOff(const MotorPins& pins);
+    void applyMotor(const MotorPins& pins, uint8_t motorId, uint8_t speedPercent, bool forward);
+    void writePwmDuty(const MotorPins& pins, uint8_t duty);
 };
 
 #endif // MOTOR_CONTROLLER_H
